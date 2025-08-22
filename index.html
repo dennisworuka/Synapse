@@ -192,7 +192,7 @@
         <!-- Global Loading Overlay -->
         <div id="global-loading" class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center hidden flex-col z-50">
             <div class="loader"></div>
-            <p class="mt-4 text-lg text-gray-700">Loading your exam progress...</p>
+            <p class="mt-4 text-lg text-gray-700">Loading...</p>
         </div>
 
         <!-- Email Verification Message (Initially hidden) -->
@@ -279,7 +279,7 @@
                             <!-- Options will be dynamically added here -->
                         </div>
                         <div class="flex justify-between w-full">
-                            <button id="prev-btn" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-xl font-medium transition duration-200 hover:bg-gray-400 disabled:opacity-50" disabled>Previous</button>
+                            <button id="prev-btn" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-xl font-medium transition duration-200 hover:bg-gray-400 disabled:opacity-50">Previous</button>
                             <button id="next-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium transition duration-200 hover:bg-indigo-700 disabled:opacity-50">Next</button>
                             <button id="submit-btn" class="px-4 py-2 bg-fuchsia-600 text-white rounded-xl font-medium transition duration-200 hover:bg-fuchsia-700 hidden">Submit Exam</button>
                         </div>
@@ -391,7 +391,7 @@
 
             // --- API Configuration ---
             const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=`;
-            const API_KEY = "";
+            const API_KEY = "AIzaSyDPNI1nht7y5_H4q6IqBIDYAeMM8bcvAkQ";
 
             // --- Page Transition Logic ---
             const showAuthPage = (isLogin) => {
@@ -503,9 +503,17 @@
 
             logoutBtn.addEventListener('click', async () => {
                 try {
+                    // FIX: Show global loading and disable button for smoother transition
+                    globalLoading.classList.remove('hidden');
+                    logoutBtn.disabled = true;
+
                     await signOut(auth);
                 } catch (error) {
                     console.error('Logout error:', error);
+                } finally {
+                    // FIX: Re-enable button and hide loader even if there's an error
+                    globalLoading.classList.add('hidden');
+                    logoutBtn.disabled = false;
                 }
             });
 
@@ -745,123 +753,124 @@
 
             // --- Main Application State Management with Firebase Auth ---
             onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    landingContainer.classList.add('hidden');
-                    authContainer.classList.add('hidden');
-                    emailVerificationMessage.classList.add('hidden');
-                    mainAppContainer.classList.remove('hidden');
-                    globalLoading.classList.remove('hidden');
+                // Global loading state for page transitions
+                globalLoading.classList.remove('hidden');
+                setTimeout(async () => {
+                    if (user) {
+                        landingContainer.classList.add('hidden');
+                        authContainer.classList.add('hidden');
+                        emailVerificationMessage.classList.add('hidden');
+                        mainAppContainer.classList.remove('hidden');
 
-                    const examStateRef = getUserExamStateDocRef(user.uid);
-                    
-                    try {
-                        const docSnap = await getDoc(examStateRef);
-                        if (docSnap.exists() && docSnap.data().questions) {
-                            const savedState = docSnap.data();
-                            examState.questions = JSON.parse(savedState.questions);
-                            examState.userAnswers = savedState.userAnswers;
-                            examState.currentQuestionIndex = savedState.currentQuestionIndex;
-                            subjectSelect.value = savedState.subject;
-                            
-                            const continueExam = confirm('You have a saved exam in progress. Would you like to continue?');
-                            if (continueExam) {
-                                initialQuizView.classList.add('hidden');
-                                examView.classList.remove('hidden');
-                                examState.isExamActive = true;
-                                startTimer();
-                                renderQuestion();
-                            } else {
-                                await setDoc(examStateRef, {
-                                    questions: null,
-                                    userAnswers: [],
-                                    currentQuestionIndex: 0,
-                                    subject: null
-                                });
-                            }
-                        }
-                    } catch (error) {
-                        console.error("Failed to retrieve saved exam state:", error);
-                        setTimeout(() => {
-                            alert("Could not load your saved progress. Please check your internet connection or Firebase rules.");
-                        }, 100);
-                    } finally {
-                        globalLoading.classList.add('hidden');
-                    }
-
-                    getAndDisplayGeolocation();
-
-                    const userProfileRef = getUserDocRef(user.uid);
-                    try {
-                        const profileSnap = await getDoc(userProfileRef);
-                        if (profileSnap.exists()) {
-                            const profileData = profileSnap.data();
-                            userDisplayName.innerText = `${profileData.firstName} ${profileData.lastName}`;
-                        } else {
-                            userDisplayName.innerText = `${user.email}`;
-                        }
-                    } catch (error) {
-                        console.error("Failed to fetch user profile:", error);
-                        userDisplayName.innerText = `user`;
-                    }
-                    
-                    let chatHistory = [{
-                        role: "user",
-                        parts: [{ text: "You are a helpful and knowledgeable AI tutor for UK secondary school students preparing for their GCSE and A-Level exams. Your responses should be clear, concise, and friendly. You should only provide educational content. When asked a question, provide a detailed and easy-to-understand explanation." }]
-                    }];
-
-                    const appendMessage = (sender, text) => {
-                        const messageDiv = document.createElement('div');
-                        messageDiv.className = `flex flex-col ${sender === 'user' ? 'items-end' : 'items-start'}`;
-                        const bubble = document.createElement('div');
-                        bubble.className = `message-bubble ${sender === 'user' ? 'user-message' : 'ai-message'}`;
-                        bubble.innerText = text;
-                        messageDiv.appendChild(bubble);
-                        chatMessages.appendChild(messageDiv);
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
-                    };
-
-                    const handleChatSubmit = async (e) => {
-                        e.preventDefault();
-                        const userText = chatInput.value.trim();
-                        if (!userText) return;
-                        appendMessage('user', userText);
-                        chatInput.value = '';
-                        chatLoading.classList.remove('hidden');
-                        chatHistory.push({ role: "user", parts: [{ text: userText }] });
+                        const examStateRef = getUserExamStateDocRef(user.uid);
                         try {
-                            const payload = { contents: chatHistory };
-                            const response = await fetch(API_URL + API_KEY, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload),
-                            });
-                            if (!response.ok) {
-                                const errorData = await response.json();
-                                throw new Error(`API error: ${JSON.stringify(errorData)}`);
-                            }
-                            const result = await response.json();
-                            const aiResponse = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-                            if (aiResponse) {
-                                appendMessage('ai', aiResponse);
-                                chatHistory.push({ role: "model", parts: [{ text: aiResponse }] });
-                            } else {
-                                appendMessage('ai', "Sorry, I couldn't get a response. Please try again.");
+                            const docSnap = await getDoc(examStateRef);
+                            if (docSnap.exists() && docSnap.data().questions) {
+                                const savedState = docSnap.data();
+                                examState.questions = JSON.parse(savedState.questions);
+                                examState.userAnswers = savedState.userAnswers;
+                                examState.currentQuestionIndex = savedState.currentQuestionIndex;
+                                subjectSelect.value = savedState.subject;
+                                
+                                const continueExam = confirm('You have a saved exam in progress. Would you like to continue?');
+                                if (continueExam) {
+                                    initialQuizView.classList.add('hidden');
+                                    examView.classList.remove('hidden');
+                                    examState.isExamActive = true;
+                                    startTimer();
+                                    renderQuestion();
+                                } else {
+                                    await setDoc(examStateRef, {
+                                        questions: null,
+                                        userAnswers: [],
+                                        currentQuestionIndex: 0,
+                                        subject: null
+                                    });
+                                }
                             }
                         } catch (error) {
-                            console.error('Error fetching chat response:', error);
-                            appendMessage('ai', `Sorry, something went wrong. Please try again later.`);
-                        } finally {
-                            chatLoading.classList.add('hidden');
+                            console.error("Failed to retrieve saved exam state:", error);
+                            setTimeout(() => {
+                                alert("Could not load your saved progress. Please check your internet connection or Firebase rules.");
+                            }, 100);
                         }
-                    };
-                    chatForm.addEventListener('submit', handleChatSubmit);
 
-                } else {
-                    landingContainer.classList.remove('hidden');
-                    authContainer.classList.add('hidden');
-                    mainAppContainer.classList.add('hidden');
-                    emailVerificationMessage.classList.add('hidden');
-                }
+                        getAndDisplayGeolocation();
+
+                        const userProfileRef = getUserDocRef(user.uid);
+                        try {
+                            const profileSnap = await getDoc(userProfileRef);
+                            if (profileSnap.exists()) {
+                                const profileData = profileSnap.data();
+                                userDisplayName.innerText = `${profileData.firstName} ${profileData.lastName}`;
+                            } else {
+                                userDisplayName.innerText = `${user.email}`;
+                            }
+                        } catch (error) {
+                            console.error("Failed to fetch user profile:", error);
+                            userDisplayName.innerText = `user`;
+                        }
+                        
+                        let chatHistory = [{
+                            role: "user",
+                            parts: [{ text: "You are a helpful and knowledgeable AI tutor for UK secondary school students preparing for their GCSE and A-Level exams. Your responses should be clear, concise, and friendly. You should only provide educational content. When asked a question, provide a detailed and easy-to-understand explanation." }]
+                        }];
+
+                        const appendMessage = (sender, text) => {
+                            const messageDiv = document.createElement('div');
+                            messageDiv.className = `flex flex-col ${sender === 'user' ? 'items-end' : 'items-start'}`;
+                            const bubble = document.createElement('div');
+                            bubble.className = `message-bubble ${sender === 'user' ? 'user-message' : 'ai-message'}`;
+                            bubble.innerText = text;
+                            messageDiv.appendChild(bubble);
+                            chatMessages.appendChild(messageDiv);
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        };
+
+                        const handleChatSubmit = async (e) => {
+                            e.preventDefault();
+                            const userText = chatInput.value.trim();
+                            if (!userText) return;
+                            appendMessage('user', userText);
+                            chatInput.value = '';
+                            chatLoading.classList.remove('hidden');
+                            chatHistory.push({ role: "user", parts: [{ text: userText }] });
+                            try {
+                                const payload = { contents: chatHistory };
+                                const response = await fetch(API_URL + API_KEY, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload),
+                                });
+                                if (!response.ok) {
+                                    const errorData = await response.json();
+                                    throw new Error(`API error: ${JSON.stringify(errorData)}`);
+                                }
+                                const result = await response.json();
+                                const aiResponse = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                                if (aiResponse) {
+                                    appendMessage('ai', aiResponse);
+                                    chatHistory.push({ role: "model", parts: [{ text: aiResponse }] });
+                                } else {
+                                    appendMessage('ai', "Sorry, I couldn't get a response. Please try again.");
+                                }
+                            } catch (error) {
+                                console.error('Error fetching chat response:', error);
+                                appendMessage('ai', `Sorry, something went wrong. Please try again later.`);
+                            } finally {
+                                chatLoading.classList.add('hidden');
+                            }
+                        };
+                        chatForm.addEventListener('submit', handleChatSubmit);
+
+                    } else {
+                        landingContainer.classList.remove('hidden');
+                        authContainer.classList.add('hidden');
+                        mainAppContainer.classList.add('hidden');
+                        emailVerificationMessage.classList.add('hidden');
+                    }
+                    globalLoading.classList.add('hidden');
+                }, 500); // Simulate a slight loading delay
             });
         });
     </script>
