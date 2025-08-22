@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synapse: UK Exam Navigator</title>
+    <!-- Tailwind CSS for modern, responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDKs -->
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            color: #1e293b;
+        }
+        .message-bubble {
+            max-width: 80%;
+            padding: 0.75rem 1.25rem;
+            border-radius: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .user-message {
+            background-color: #3b82f6;
+            color: white;
+            border-top-right-radius: 0.5rem;
+            align-self: flex-end;
+        }
+        .ai-message {
+            background-color: #e2e8f0;
+            color: #1e293b;
+            border-top-left-radius: 0.5rem;
+            align-self: flex-start;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #6366f1;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 2s linear infinite;
+            animation: spin 2s linear infinite;
+        }
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+
+        /* --- Landing Page specific styles --- */
+        #landing-container {
+            background-image: url('https://storage.googleapis.com/gcs-public-images/exam_hall_faded.jpg');
+            background-size: cover;
+            background-position: center;
+            position: relative;
+            z-index: 1;
+        }
+        #landing-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6); /* Dark overlay for text readability */
+            z-index: -1;
+        }
+        #landing-container h1,
+        #landing-container h2,
+        #landing-container p {
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+        }
+        /* --- Authentication Page specific styles --- */
+        #auth-container {
+            background-image: url('https://images.unsplash.com/photo-1549420067-15ae27572625?q=80&w=2670&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
+            background-size: cover;
+            background-position: center;
+            position: relative;
+            z-index: 1;
+        }
+        #auth-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: -1;
+        }
+        #auth-container h1, #auth-container p, #auth-container h2 {
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        #login-form-container, #signup-form-container {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        /* Custom styles for the quiz options */
+        .option-button {
+            transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+        }
+        .option-button:hover {
+            transform: scale(1.02);
+        }
+        .option-button.selected {
+            background-color: #e0e7ff;
+            border-color: #4f46e5;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.1), 0 2px 4px -1px rgba(79, 70, 229, 0.06);
+        }
+        .option-button.correct {
+            background-color: #dcfce7;
+            border-color: #22c55e;
+            box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.1), 0 2px 4px -1px rgba(34, 197, 94, 0.06);
+        }
+        .option-button.incorrect {
+            background-color: #fee2e2;
+            border-color: #ef4444;
+            box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.1), 0 2px 4px -1px rgba(239, 68, 68, 0.06);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div id="app-container" class="bg-white rounded-3xl shadow-xl w-full max-w-4xl p-6 md:p-10 flex flex-col md:flex-row gap-8">
+
+        <!-- Landing Page (Visible by default) -->
+        <div id="landing-container" class="w-full flex flex-col items-center justify-center text-center p-8">
+            <h1 class="text-5xl md:text-6xl font-extrabold text-indigo-600 mb-4 animate-pulse">Synapse</h1>
+            <h2 class="text-3xl font-bold text-white mb-2">The UK Exam Navigator</h2>
+            <p class="text-xl text-white mb-8">Personalized, AI-powered revision for your GCSEs and A-Levels.</p>
+            
+            <div class="flex flex-col sm:flex-row gap-4 w-full max-w-sm">
+                <button id="get-started-btn" class="flex-1 p-4 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl font-bold text-lg shadow-md transition duration-200">
+                    Get Started
+                </button>
+                <button id="login-link-btn" class="flex-1 p-4 bg-white border-2 border-fuchsia-600 text-fuchsia-600 rounded-xl font-bold text-lg shadow-md transition duration-200 hover:bg-fuchsia-50">
+                    Log In
+                </button>
+            </div>
+        </div>
+        
+        <!-- Authentication Panel (Hidden by default) -->
+        <div id="auth-container" class="w-full flex flex-col items-center justify-center text-center p-8 hidden">
+            <h1 class="text-3xl font-bold mb-4 text-white">Welcome to Synapse</h1>
+            <p class="text-white mb-6">Your personal AI-powered exam revision companion.</p>
+            
+            <!-- Login Form -->
+            <div id="login-form-container" class="w-full max-w-sm p-6 rounded-2xl shadow-inner mb-4">
+                <h2 class="text-2xl font-semibold mb-4 text-white">Login</h2>
+                <div id="login-message" class="mt-4 text-sm font-medium text-red-300"></div>
+                <form id="login-form" class="flex flex-col gap-4">
+                    <input type="email" id="login-email" placeholder="Email" required class="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/70 text-black placeholder-gray-600">
+                    <input type="password" id="login-password" placeholder="Password" required class="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/70 text-black placeholder-gray-600">
+                    <button type="submit" id="login-btn" class="w-full p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition duration-200 flex justify-center items-center gap-2">
+                        <span>Log In</span>
+                    </button>
+                </form>
+                <button id="show-signup" class="mt-4 text-sm text-indigo-300 hover:underline">Don't have an account? Sign Up</button>
+            </div>
+            
+            <!-- Sign Up Form (Initially hidden) -->
+            <div id="signup-form-container" class="w-full max-w-sm p-6 rounded-2xl shadow-inner hidden">
+                <h2 class="text-2xl font-semibold mb-4 text-white">Sign Up</h2>
+                <div id="signup-message" class="mt-4 text-sm font-medium text-red-300"></div>
+                <form id="signup-form" class="flex flex-col gap-4">
+                    <input type="text" id="signup-firstname" placeholder="First Name" required class="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/70 text-black placeholder-gray-600">
+                    <input type="text" id="signup-lastname" placeholder="Last Name" required class="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/70 text-black placeholder-gray-600">
+                    <input type="text" id="signup-username" placeholder="Username" required class="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/70 text-black placeholder-gray-600">
+                    <input type="email" id="signup-email" placeholder="Email" required class="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/70 text-black placeholder-gray-600">
+                    <input type="password" id="signup-password" placeholder="Password (min. 6 characters)" required class="p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/70 text-black placeholder-gray-600">
+                    <button type="submit" id="signup-btn" class="w-full p-3 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl font-semibold transition duration-200 flex justify-center items-center gap-2">
+                        <span>Sign Up</span>
+                    </button>
+                </form>
+                <button id="show-login" class="mt-4 text-sm text-fuchsia-300 hover:underline">Already have an account? Log In</button>
+            </div>
+        </div>
+        
+        <!-- Global Loading Overlay -->
+        <div id="global-loading" class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center hidden flex-col z-50">
+            <div class="loader"></div>
+            <p class="mt-4 text-lg text-gray-700">Loading your exam progress...</p>
+        </div>
+
+        <!-- Email Verification Message (Initially hidden) -->
+        <div id="email-verification-message" class="w-full max-w-xl text-center p-8 hidden">
+            <i class="fas fa-paper-plane text-fuchsia-500 text-6xl mb-4"></i>
+            <h1 class="text-3xl font-bold text-slate-800 mb-4">Verification Email Sent!</h1>
+            <p class="text-lg text-slate-600">
+                A verification link has been sent to your email address. Please click the link to activate your account.
+            </p>
+            <p class="text-sm mt-4 text-slate-500">
+                (You can now close this tab and check your inbox.)
+            </p>
+        </div>
+
+
+        <!-- Main Application (Hidden by default) -->
+        <div id="main-app-container" class="w-full hidden flex flex-col md:flex-row gap-8">
+            <!-- Left Panel: AI Tutor Chat -->
+            <div class="flex-1 flex flex-col h-full md:h-[600px] bg-slate-50 rounded-2xl p-4 shadow-inner">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center">
+                        <img src="https://placehold.co/60x60/818cf8/ffffff?text=AI" alt="AI Avatar" class="rounded-full shadow-md mr-4">
+                        <div class="flex flex-col">
+                            <h2 class="text-2xl font-bold text-slate-700">AI Tutor</h2>
+                            <span id="user-display-name" class="text-sm font-medium text-slate-600"></span>
+                        </div>
+                    </div>
+                    <button id="logout-btn" class="text-sm text-slate-500 hover:underline transition-colors duration-200">Log Out</button>
+                </div>
+                <div id="location-status" class="text-xs text-slate-500 mb-2"></div>
+                <div id="chat-messages" class="flex-1 overflow-y-auto space-y-4 p-2 mb-4 flex flex-col">
+                    <!-- Chat messages will be appended here -->
+                    <div class="flex flex-col items-start">
+                        <div class="message-bubble ai-message">
+                            Hello! I'm your personal AI tutor. Ask me any question about your GCSE or A-Level subjects, and I'll do my best to help you understand. How can I assist with your revision today?
+                        </div>
+                    </div>
+                </div>
+                <div id="chat-loading" class="flex justify-center items-center hidden my-2">
+                    <div class="loader"></div>
+                </div>
+                <form id="chat-form" class="flex space-x-2">
+                    <input type="text" id="chat-input" placeholder="Ask a question about a topic..." class="flex-1 p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200">
+                    <button type="submit" class="p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition duration-200">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Right Panel: Practice Questions -->
+            <div class="flex-1 flex flex-col h-full bg-slate-50 rounded-2xl p-4 shadow-inner">
+                <div class="flex items-center justify-center mb-4">
+                    <h2 class="text-2xl font-bold text-slate-700 mr-4">Practice Questions</h2>
+                    <img src="https://placehold.co/60x60/f9a8d4/ffffff?text=Quiz" alt="Quiz Icon" class="rounded-full shadow-md">
+                </div>
+                <div id="quiz-area" class="flex-1 flex flex-col items-center justify-start space-y-4">
+                    <!-- Initial view -->
+                    <div id="initial-quiz-view" class="w-full flex flex-col items-center justify-center space-y-4">
+                        <p class="text-sm font-medium text-center text-slate-600">You are about to start a 20-question exam. You will be timed.</p>
+                        <select id="subject-select" class="w-full md:w-2/3 p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition duration-200">
+                            <option value="" disabled selected>Select a Subject</option>
+                            <option value="Mathematics">Mathematics</option>
+                            <option value="English Literature">English Literature</option>
+                            <option value="Biology">Biology</option>
+                            <option value="Chemistry">Chemistry</option>
+                            <option value="Physics">Physics</option>
+                            <option value="History">History</option>
+                        </select>
+                        <button id="start-exam-btn" class="w-full md:w-auto px-6 py-3 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl shadow-md transition duration-200 font-semibold">
+                            Start Exam
+                        </button>
+                    </div>
+
+                    <!-- Exam view -->
+                    <div id="exam-view" class="hidden w-full flex flex-col space-y-4">
+                        <div class="flex justify-between items-center text-sm font-medium text-slate-600">
+                            <span id="timer-display">Time: 20:00</span>
+                            <span id="question-count">Question 1 of 20</span>
+                        </div>
+                        <div id="question-text" class="text-lg font-medium text-slate-800 p-4 bg-white rounded-lg shadow-sm w-full">
+                            
+                        </div>
+                        <div id="options-container" class="w-full flex flex-col space-y-3">
+                            <!-- Options will be dynamically added here -->
+                        </div>
+                        <div class="flex justify-between w-full">
+                            <button id="prev-btn" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-xl font-medium transition duration-200 hover:bg-gray-400 disabled:opacity-50" disabled>Previous</button>
+                            <button id="next-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium transition duration-200 hover:bg-indigo-700 disabled:opacity-50">Next</button>
+                            <button id="submit-btn" class="px-4 py-2 bg-fuchsia-600 text-white rounded-xl font-medium transition duration-200 hover:bg-fuchsia-700 hidden">Submit Exam</button>
+                        </div>
+                    </div>
+
+                    <!-- Results view -->
+                    <div id="results-view" class="hidden w-full flex flex-col items-center justify-center space-y-4">
+                        <h3 class="text-2xl font-bold text-slate-700">Exam Complete!</h3>
+                        <div id="score-display" class="text-xl font-bold text-indigo-600">Your Score: 0/20</div>
+                        <div id="results-summary" class="w-full text-sm text-center text-slate-600 overflow-y-auto max-h-60 p-2">
+                            <!-- Detailed results will be added here -->
+                        </div>
+                        <button id="restart-exam-btn" class="w-full md:w-auto px-6 py-3 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl shadow-md transition duration-200 font-semibold">
+                            Restart Exam
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="quiz-loading" class="flex justify-center items-center hidden my-4">
+                    <div class="loader"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, sendEmailVerification, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, query, collection, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Global Variables ---
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+           const firebaseConfig = {
+                    apiKey: "AIzaSyCStPB9Fp5cI3DSE2lNo7OPlXUSQoyJnTo",
+                    authDomain: "synapse-exam-app.firebaseapp.com",
+                    projectId: "synapse-exam-app",
+                    storageBucket: "synapse-exam-app.firebasestorage.app",
+                    messagingSenderId: "759651077648",
+                    appId: "1:759651077648:web:b4a44a9fbb75fb8b57c495",
+                    measurementId: "G-C1W55BTK11"
+                }
+            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+            // --- Firebase Initialization ---
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+
+            // --- UI Elements ---
+            const landingContainer = document.getElementById('landing-container');
+            const authContainer = document.getElementById('auth-container');
+            const mainAppContainer = document.getElementById('main-app-container');
+            const loginFormContainer = document.getElementById('login-form-container');
+            const signupFormContainer = document.getElementById('signup-form-container');
+            const getStartedBtn = document.getElementById('get-started-btn');
+            const loginLinkBtn = document.getElementById('login-link-btn');
+            const showSignupBtn = document.getElementById('show-signup');
+            const showLoginBtn = document.getElementById('show-login');
+            const loginForm = document.getElementById('login-form');
+            const signupForm = document.getElementById('signup-form');
+            const loginMessage = document.getElementById('login-message');
+            const signupMessage = document.getElementById('signup-message');
+            const logoutBtn = document.getElementById('logout-btn');
+            const locationStatus = document.getElementById('location-status');
+            const emailVerificationMessage = document.getElementById('email-verification-message');
+            
+            // --- Chat UI Elements ---
+            const chatMessages = document.getElementById('chat-messages');
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            const chatLoading = document.getElementById('chat-loading');
+
+            // --- Quiz UI Elements ---
+            const initialQuizView = document.getElementById('initial-quiz-view');
+            const examView = document.getElementById('exam-view');
+            const resultsView = document.getElementById('results-view');
+            const subjectSelect = document.getElementById('subject-select');
+            const startExamBtn = document.getElementById('start-exam-btn');
+            const questionText = document.getElementById('question-text');
+            const optionsContainer = document.getElementById('options-container');
+            const timerDisplay = document.getElementById('timer-display');
+            const questionCount = document.getElementById('question-count');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const submitBtn = document.getElementById('submit-btn');
+            const scoreDisplay = document.getElementById('score-display');
+            const resultsSummary = document.getElementById('results-summary');
+            const restartExamBtn = document.getElementById('restart-exam-btn');
+            const quizLoading = document.getElementById('quiz-loading');
+            const signupBtn = document.getElementById('signup-btn');
+            const loginBtn = document.getElementById('login-btn');
+            const globalLoading = document.getElementById('global-loading');
+            const userDisplayName = document.getElementById('user-display-name');
+            
+            // --- Quiz State Variables ---
+            let examState = {
+                questions: [],
+                userAnswers: [],
+                currentQuestionIndex: 0,
+                timer: 0,
+                intervalId: null,
+                isExamActive: false
+            };
+            const EXAM_DURATION = 20 * 60; // 20 minutes in seconds
+            const QUESTION_COUNT = 20;
+
+            // --- API Configuration ---
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=`;
+            const API_KEY = "";
+
+            // --- Page Transition Logic ---
+            const showAuthPage = (isLogin) => {
+                landingContainer.classList.add('hidden');
+                authContainer.classList.remove('hidden');
+                mainAppContainer.classList.add('hidden');
+                emailVerificationMessage.classList.add('hidden'); // Ensure verification message is hidden
+                toggleForms(isLogin);
+            };
+
+            getStartedBtn.addEventListener('click', () => showAuthPage(false)); // False for sign-up
+            loginLinkBtn.addEventListener('click', () => showAuthPage(true));  // True for log-in
+            
+            // --- User Authentication Logic ---
+            const toggleForms = (showLogin) => {
+                loginFormContainer.classList.toggle('hidden', !showLogin);
+                signupFormContainer.classList.toggle('hidden', showLogin);
+            };
+
+            showSignupBtn.addEventListener('click', () => toggleForms(false));
+            showLoginBtn.addEventListener('click', () => toggleForms(true));
+            
+            // Firestore data path for users and their state
+            const getUserDocRef = (userId) => doc(db, `artifacts/${appId}/users/${userId}/profile`, 'data');
+            const getUserExamStateDocRef = (userId) => doc(db, `artifacts/${appId}/users/${userId}/exam_state`, 'data');
+            const checkUsernameExists = async (username) => {
+                const q = query(collection(db, `artifacts/${appId}/users`), where('username', '==', username));
+                const querySnapshot = await getDocs(q);
+                return !querySnapshot.empty;
+            };
+
+            signupForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const firstName = e.target.querySelector('#signup-firstname').value;
+                const lastName = e.target.querySelector('#signup-lastname').value;
+                const username = e.target.querySelector('#signup-username').value;
+                const email = e.target.querySelector('#signup-email').value;
+                const password = e.target.querySelector('#signup-password').value;
+
+                signupMessage.innerText = '';
+                signupBtn.disabled = true;
+                signupBtn.innerHTML = '<div class="loader"></div>';
+                
+                try {
+                    const usernameExists = await checkUsernameExists(username);
+                    if (usernameExists) {
+                        signupMessage.innerText = 'Username is already taken. Please choose another one.';
+                        signupMessage.style.color = '#ef4444';
+                        return;
+                    }
+
+                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    const user = userCredential.user;
+                    
+                    await sendEmailVerification(user);
+
+                    const userProfileRef = getUserDocRef(user.uid);
+                    await setDoc(userProfileRef, {
+                        firstName: firstName,
+                        lastName: lastName,
+                        username: username,
+                        email: email,
+                        createdAt: new Date()
+                    });
+
+                    await signOut(auth);
+
+                    authContainer.classList.add('hidden');
+                    emailVerificationMessage.classList.remove('hidden');
+
+                } catch (error) {
+                    if (error.code === 'auth/operation-not-allowed') {
+                        signupMessage.innerText = 'Sign-up failed. This feature needs to be enabled in your Firebase project. Please go to your Firebase Console -> Authentication -> Sign-in method and enable "Email/Password".';
+                    } else {
+                        signupMessage.innerText = error.message;
+                    }
+                    signupMessage.style.color = '#ef4444';
+                    console.error('Sign-up error:', error);
+                } finally {
+                    signupBtn.disabled = false;
+                    signupBtn.innerHTML = '<span>Sign Up</span>';
+                }
+            });
+
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = e.target.querySelector('#login-email').value;
+                const password = e.target.querySelector('#login-password').value;
+                
+                loginMessage.innerText = '';
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<div class="loader"></div>';
+                
+                try {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } catch (error) {
+                    if (error.code === 'auth/operation-not-allowed') {
+                        loginMessage.innerText = 'Login failed. This feature needs to be enabled in your Firebase project. Please go to your Firebase Console -> Authentication -> Sign-in method and enable "Email/Password".';
+                    } else {
+                        loginMessage.innerText = 'Login failed: ' + error.message;
+                    }
+                    loginMessage.style.color = '#ef4444';
+                    console.error('Login error:', error);
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<span>Log In</span>';
+                }
+            });
+
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    await signOut(auth);
+                } catch (error) {
+                    console.error('Logout error:', error);
+                }
+            });
+
+            // --- Geolocation Logic (Simplified) ---
+            const getAndDisplayGeolocation = () => {
+                if ("geolocation" in navigator) {
+                    navigator.geolocation.getCurrentPosition((position) => {
+                        const { latitude, longitude } = position.coords;
+                        if (latitude > 45 && latitude < 60 && longitude > -10 && longitude < 10) {
+                            locationStatus.innerText = "Location: Europe";
+                        } else {
+                            locationStatus.innerText = "Location: Other Region";
+                        }
+                    }, (error) => {
+                        console.error('Geolocation error:', error);
+                        locationStatus.innerText = "Location: Cannot determine";
+                    });
+                } else {
+                    locationStatus.innerText = "Location: Geolocation not supported";
+                }
+            };
+            
+            // --- Exam Logic ---
+            const startTimer = () => {
+                examState.timer = EXAM_DURATION;
+                const tick = () => {
+                    examState.timer--;
+                    const minutes = Math.floor(examState.timer / 60);
+                    const seconds = examState.timer % 60;
+                    timerDisplay.innerText = `Time: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    if (examState.timer <= 0) {
+                        clearInterval(examState.intervalId);
+                        submitExam();
+                    }
+                };
+                tick();
+                examState.intervalId = setInterval(tick, 1000);
+            };
+
+            const renderQuestion = () => {
+                const currentQ = examState.questions[examState.currentQuestionIndex];
+                if (!currentQ) return;
+
+                questionText.innerText = `Q${examState.currentQuestionIndex + 1}: ${currentQ.question}`;
+                questionCount.innerText = `Question ${examState.currentQuestionIndex + 1} of ${QUESTION_COUNT}`;
+                optionsContainer.innerHTML = '';
+                
+                currentQ.options.forEach(option => {
+                    const button = document.createElement('button');
+                    button.innerText = option;
+                    button.className = "w-full p-3 text-left rounded-xl border-2 border-gray-300 bg-white hover:bg-gray-100 option-button font-medium text-slate-700";
+                    button.addEventListener('click', () => selectAnswer(option));
+                    optionsContainer.appendChild(button);
+                });
+
+                const selectedAnswer = examState.userAnswers[examState.currentQuestionIndex];
+                if (selectedAnswer) {
+                    optionsContainer.querySelectorAll('.option-button').forEach(btn => {
+                        if (btn.innerText === selectedAnswer) {
+                            btn.classList.add('selected');
+                        }
+                    });
+                }
+
+                prevBtn.disabled = examState.currentQuestionIndex === 0;
+                nextBtn.classList.toggle('hidden', examState.currentQuestionIndex === QUESTION_COUNT - 1);
+                submitBtn.classList.toggle('hidden', examState.currentQuestionIndex < QUESTION_COUNT - 1);
+            };
+
+            const selectAnswer = async (answer) => {
+                examState.userAnswers[examState.currentQuestionIndex] = answer;
+                optionsContainer.querySelectorAll('.option-button').forEach(btn => {
+                    btn.classList.remove('selected');
+                    if (btn.innerText === answer) {
+                        btn.classList.add('selected');
+                    }
+                });
+                
+                const user = auth.currentUser;
+                if (user) {
+                    const examStateRef = getUserExamStateDocRef(user.uid);
+                    try {
+                        await setDoc(examStateRef, {
+                            questions: JSON.stringify(examState.questions),
+                            userAnswers: examState.userAnswers,
+                            currentQuestionIndex: examState.currentQuestionIndex,
+                            subject: subjectSelect.value
+                        }, { merge: true });
+                    } catch (error) {
+                        console.error("Failed to save exam state:", error);
+                    }
+                }
+            };
+
+            const submitExam = () => {
+                if (examState.intervalId) {
+                    clearInterval(examState.intervalId);
+                }
+
+                let score = 0;
+                const summaryHtml = examState.questions.map((q, index) => {
+                    const userAnswer = examState.userAnswers[index];
+                    const isCorrect = userAnswer === q.answer;
+                    if (isCorrect) {
+                        score++;
+                    }
+                    const userClass = isCorrect ? 'text-green-600' : 'text-red-600';
+                    const correctIcon = isCorrect ? '<i class="fas fa-check-circle text-green-600"></i>' : '<i class="fas fa-times-circle text-red-600"></i>';
+
+                    return `
+                        <div class="mb-4 p-3 bg-gray-100 rounded-lg">
+                            <p class="font-bold text-slate-800">Q${index + 1}: ${q.question}</p>
+                            <p class="mt-1 ${userClass}">${correctIcon} Your Answer: ${userAnswer || 'Not answered'}</p>
+                            <p class="mt-1 text-green-600 font-bold">Correct Answer: ${q.answer}</p>
+                        </div>
+                    `;
+                }).join('');
+
+                scoreDisplay.innerText = `Your Score: ${score}/${QUESTION_COUNT}`;
+                resultsSummary.innerHTML = summaryHtml;
+
+                examView.classList.add('hidden');
+                resultsView.classList.remove('hidden');
+                examState.isExamActive = false;
+                
+                const user = auth.currentUser;
+                if (user) {
+                    try {
+                        setDoc(getUserExamStateDocRef(user.uid), {
+                            questions: null,
+                            userAnswers: [],
+                            currentQuestionIndex: 0,
+                            subject: null
+                        }, { merge: true });
+                    } catch (error) {
+                        console.error("Failed to clear exam state:", error);
+                    }
+                }
+            };
+
+            const getQuestions = async (subject) => {
+                quizLoading.classList.remove('hidden');
+                const prompt = `Generate a 20-question multiple-choice exam for a UK GCSE student on the subject: ${subject}. The exam should have a variety of difficulty levels. The response must be a valid JSON array of 20 objects. Each object must have a "question" string, an "options" array of 4 strings, and an "answer" string which is one of the options. Do not include any other text or formatting. The JSON object should be the only content.`;
+                
+                const generationConfig = {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "ARRAY",
+                        items: {
+                            type: "OBJECT",
+                            properties: {
+                                "question": { "type": "STRING" },
+                                "options": { "type": "ARRAY", "items": { "type": "STRING" } },
+                                "answer": { "type": "STRING" }
+                            },
+                            "propertyOrdering": ["question", "options", "answer"]
+                        }
+                    }
+                };
+                
+                try {
+                    const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: generationConfig };
+                    const response = await fetch(API_URL + API_KEY, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(`API error: ${JSON.stringify(errorData)}`);
+                    }
+                    const result = await response.json();
+                    const jsonString = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (jsonString) {
+                        examState.questions = JSON.parse(jsonString);
+                        if (examState.questions.length < QUESTION_COUNT) {
+                          console.warn("Received fewer than 20 questions. Retrying...");
+                          return getQuestions(subject);
+                        }
+                        examState.userAnswers = new Array(QUESTION_COUNT).fill(null);
+                        examState.currentQuestionIndex = 0;
+                        startTimer();
+                        renderQuestion();
+                        
+                        initialQuizView.classList.add('hidden');
+                        examView.classList.remove('hidden');
+                        examState.isExamActive = true;
+                    } else {
+                        questionText.innerText = "Sorry, I couldn't generate questions. Please try again.";
+                    }
+                } catch (error) {
+                    console.error('Error generating quiz questions:', error);
+                    questionText.innerText = "Sorry, something went wrong. Please check your network or try again later.";
+                } finally {
+                    quizLoading.classList.add('hidden');
+                }
+            };
+
+            // --- Event Listeners for Quiz ---
+            startExamBtn.addEventListener('click', () => {
+                const selectedSubject = subjectSelect.value;
+                if (selectedSubject) {
+                    getQuestions(selectedSubject);
+                }
+            });
+
+            nextBtn.addEventListener('click', () => {
+                if (examState.currentQuestionIndex < QUESTION_COUNT - 1) {
+                    examState.currentQuestionIndex++;
+                    renderQuestion();
+                }
+            });
+            
+            prevBtn.addEventListener('click', () => {
+                if (examState.currentQuestionIndex > 0) {
+                    examState.currentQuestionIndex--;
+                    renderQuestion();
+                }
+            });
+
+            submitBtn.addEventListener('click', submitExam);
+
+            restartExamBtn.addEventListener('click', () => {
+                resultsView.classList.add('hidden');
+                initialQuizView.classList.remove('hidden');
+                subjectSelect.value = "";
+                examState = {
+                    questions: [],
+                    userAnswers: [],
+                    currentQuestionIndex: 0,
+                    timer: 0,
+                    intervalId: null,
+                    isExamActive: false
+                };
+            });
+
+            // --- Main Application State Management with Firebase Auth ---
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    landingContainer.classList.add('hidden');
+                    authContainer.classList.add('hidden');
+                    emailVerificationMessage.classList.add('hidden');
+                    mainAppContainer.classList.remove('hidden');
+                    globalLoading.classList.remove('hidden');
+
+                    const examStateRef = getUserExamStateDocRef(user.uid);
+                    
+                    try {
+                        const docSnap = await getDoc(examStateRef);
+                        if (docSnap.exists() && docSnap.data().questions) {
+                            const savedState = docSnap.data();
+                            examState.questions = JSON.parse(savedState.questions);
+                            examState.userAnswers = savedState.userAnswers;
+                            examState.currentQuestionIndex = savedState.currentQuestionIndex;
+                            subjectSelect.value = savedState.subject;
+                            
+                            const continueExam = confirm('You have a saved exam in progress. Would you like to continue?');
+                            if (continueExam) {
+                                initialQuizView.classList.add('hidden');
+                                examView.classList.remove('hidden');
+                                examState.isExamActive = true;
+                                startTimer();
+                                renderQuestion();
+                            } else {
+                                await setDoc(examStateRef, {
+                                    questions: null,
+                                    userAnswers: [],
+                                    currentQuestionIndex: 0,
+                                    subject: null
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Failed to retrieve saved exam state:", error);
+                        setTimeout(() => {
+                            alert("Could not load your saved progress. Please check your internet connection or Firebase rules.");
+                        }, 100);
+                    } finally {
+                        globalLoading.classList.add('hidden');
+                    }
+
+                    getAndDisplayGeolocation();
+
+                    const userProfileRef = getUserDocRef(user.uid);
+                    try {
+                        const profileSnap = await getDoc(userProfileRef);
+                        if (profileSnap.exists()) {
+                            const profileData = profileSnap.data();
+                            userDisplayName.innerText = `${profileData.firstName} ${profileData.lastName}`;
+                        } else {
+                            userDisplayName.innerText = `${user.email}`;
+                        }
+                    } catch (error) {
+                        console.error("Failed to fetch user profile:", error);
+                        userDisplayName.innerText = `user`;
+                    }
+                    
+                    let chatHistory = [{
+                        role: "user",
+                        parts: [{ text: "You are a helpful and knowledgeable AI tutor for UK secondary school students preparing for their GCSE and A-Level exams. Your responses should be clear, concise, and friendly. You should only provide educational content. When asked a question, provide a detailed and easy-to-understand explanation." }]
+                    }];
+
+                    const appendMessage = (sender, text) => {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = `flex flex-col ${sender === 'user' ? 'items-end' : 'items-start'}`;
+                        const bubble = document.createElement('div');
+                        bubble.className = `message-bubble ${sender === 'user' ? 'user-message' : 'ai-message'}`;
+                        bubble.innerText = text;
+                        messageDiv.appendChild(bubble);
+                        chatMessages.appendChild(messageDiv);
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    };
+
+                    const handleChatSubmit = async (e) => {
+                        e.preventDefault();
+                        const userText = chatInput.value.trim();
+                        if (!userText) return;
+                        appendMessage('user', userText);
+                        chatInput.value = '';
+                        chatLoading.classList.remove('hidden');
+                        chatHistory.push({ role: "user", parts: [{ text: userText }] });
+                        try {
+                            const payload = { contents: chatHistory };
+                            const response = await fetch(API_URL + API_KEY, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload),
+                            });
+                            if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(`API error: ${JSON.stringify(errorData)}`);
+                            }
+                            const result = await response.json();
+                            const aiResponse = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if (aiResponse) {
+                                appendMessage('ai', aiResponse);
+                                chatHistory.push({ role: "model", parts: [{ text: aiResponse }] });
+                            } else {
+                                appendMessage('ai', "Sorry, I couldn't get a response. Please try again.");
+                            }
+                        } catch (error) {
+                            console.error('Error fetching chat response:', error);
+                            appendMessage('ai', `Sorry, something went wrong. Please try again later.`);
+                        } finally {
+                            chatLoading.classList.add('hidden');
+                        }
+                    };
+                    chatForm.addEventListener('submit', handleChatSubmit);
+
+                } else {
+                    landingContainer.classList.remove('hidden');
+                    authContainer.classList.add('hidden');
+                    mainAppContainer.classList.add('hidden');
+                    emailVerificationMessage.classList.add('hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
